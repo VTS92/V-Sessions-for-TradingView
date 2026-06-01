@@ -1,29 +1,138 @@
-// © VitoSantarsiero | Optimized by Pinescripts experts
+// © 2026 Vito Santarsiero | AI-assisted optimization
+
 //@version=5
 indicator("V-Sessions", overlay = true, max_boxes_count = 500, max_lines_count = 500)
 
-// =============================================================================
-// DATA STRUCTURES (UDT)
-// =============================================================================
 type SessionState
     box sessionBox
     label sessionLabel
-    line vLineCustom 
-    line extHigh     
-    line extLow      
+    line pocLine      
+    box lvnBox        
     float sHigh
     float sLow
     int startIndex
     bool wasInSession
+    float[] ltfH      
+    float[] ltfL      
+    float[] ltfV      
 
-// =============================================================================
-// CORE LOGIC FUNCTIONS
-// =============================================================================
-f_manageSession(SessionState state, bool _enabled, bool _hist, bool _extEnabled, string _name, string _sess, string _tz, color _col, int _vLineHour = -1, int _vLineMin = -1) =>
+type LVN_Data
+    box id
+    float top
+    float bottom
+    bool isMitigated
+    bool sessionHist
+
+var LVN_Data[] active_lvns = array.new<LVN_Data>()
+
+sL   = input.bool(false, "London (RTH)", group="SESSIONS ACTIVATION")
+sLO  = input.bool(false, "London (ETH) extended", group="SESSIONS ACTIVATION")
+sN   = input.bool(true, "New York (RTH)", group="SESSIONS ACTIVATION")
+sNO  = input.bool(true, "New York (ETH) electronic", group="SESSIONS ACTIVATION")
+sT   = input.bool(false, "Tokyo (RTH)", group="SESSIONS ACTIVATION")
+sSY  = input.bool(false, "Sydney (RTH)", group="SESSIONS ACTIVATION")
+
+master_poc   = input.bool(true, "POC", inline="master", group="GLOBAL CONFIGURATIONS")
+master_lvn   = input.bool(true, "LVN", inline="master", group="GLOBAL CONFIGURATIONS")
+master_vwap  = input.bool(true, "VWAP", inline="master", group="GLOBAL CONFIGURATIONS")
+master_bands = input.bool(true, "BANDS", inline="master", group="GLOBAL CONFIGURATIONS")
+
+bin_res     = 24    /// Profile Row Resolution (Bins)
+
+c1   = input.color(color.new(#2962FF, 85), "LDN ☀", inline="s1_row2", group="TRADING SESSIONS SETTINGS")
+t1   = input.session("0800-1630", "", inline="s1_row2", group="TRADING SESSIONS SETTINGS")
+h1   = input.bool(true, "Hist", inline="s1_row2", group="TRADING SESSIONS SETTINGS")
+
+c2   = input.color(color.new(#4a4a4a, 90), "LDN ☾", inline="s2_row2", group="TRADING SESSIONS SETTINGS")
+t2   = input.session("2300-0800", "", inline="s2_row2", group="TRADING SESSIONS SETTINGS")
+h2   = input.bool(false, "Hist", inline="s2_row2", group="TRADING SESSIONS SETTINGS")
+
+c3   = input.color(color.new(#f23645, 85), "NYC ☀", inline="s3_row2", group="TRADING SESSIONS SETTINGS")
+t3   = input.session("0930-1600", "", inline="s3_row2", group="TRADING SESSIONS SETTINGS")
+h3   = input.bool(true, "Hist", inline="s3_row2", group="TRADING SESSIONS SETTINGS")
+
+c4   = input.color(color.new(#4a4a4a, 90), "NYC ☾", inline="s4_row2", group="TRADING SESSIONS SETTINGS")
+t4   = input.session("1600-0930", "", inline="s4_row2", group="TRADING SESSIONS SETTINGS")
+h4   = input.bool(false, "Hist", inline="s4_row2", group="TRADING SESSIONS SETTINGS")
+
+c5   = input.color(color.new(#FF9800, 85), "TYO ☀", inline="s5_row2", group="TRADING SESSIONS SETTINGS")
+t5   = input.session("0900-1530", "", inline="s5_row2", group="TRADING SESSIONS SETTINGS")
+h5   = input.bool(false, "Hist", inline="s5_row2", group="TRADING SESSIONS SETTINGS")
+
+c6   = input.color(color.new(#00BCD4, 90), "SYD ☀", inline="s6_row2", group="TRADING SESSIONS SETTINGS")
+t6   = input.session("1000-1600", "", inline="s6_row2", group="TRADING SESSIONS SETTINGS")
+h6   = input.bool(false, "Hist", inline="s6_row2", group="TRADING SESSIONS SETTINGS")
+
+z1 = "Europe/London"
+z2 = "Europe/London"
+z3 = "America/New_York"
+z4 = "America/New_York"
+z5 = "Asia/Tokyo"
+z6 = "Australia/Sydney"
+
+hideonDWM = input.bool(false, title="Hide VWAP on 1D or Above", group="VWAP CONFIGURATIONS")
+anchor = input.string(defval = "Session", title="Anchor Period", options=["Session", "Week", "Month", "Quarter", "Year", "Decade", "Century"], group="VWAP CONFIGURATIONS")
+src = input.source(title = "Source", defval = hlc3, group="VWAP CONFIGURATIONS")
+offset = input.int(0, title="Offset", group="VWAP CONFIGURATIONS")
+calcModeInput = input.string("Standard Deviation", "Bands Calculation Mode", options = ["Standard Deviation", "Percentage"], group = "VWAP CONFIGURATIONS")
+
+bandColor   = input.color(color.new(#1a1e28, 0), "Bands Base Color", group="VWAP CONFIGURATIONS")
+bandMult_1 = input.float(1.0, title = "Multiplier Band #1", group = "VWAP CONFIGURATIONS", step = 0.5, minval=0)
+bandMult_2 = input.float(2.0, title = "Multiplier Band #2", group = "VWAP CONFIGURATIONS", step = 0.5, minval=0)
+bandMult_3 = input.float(3.0, title = "Multiplier Band #3", group = "VWAP CONFIGURATIONS", step = 0.5, minval=0)
+
+isNewPeriod = switch anchor
+    "Session"   => timeframe.change("D")
+    "Week"      => timeframe.change("W")
+    "Month"     => timeframe.change("M")
+    "Quarter"   => timeframe.change("3M")
+    "Year"      => timeframe.change("12M")
+    "Decade"    => timeframe.change("12M") and year % 10 == 0
+    "Century"   => timeframe.change("12M") and year % 100 == 0
+    => false
+
+if na(src[1])
+    isNewPeriod := true
+
+float vwapValue = na
+float upperBandValue1 = na, float lowerBandValue1 = na
+float upperBandValue2 = na, float lowerBandValue2 = na
+float upperBandValue3 = na, float lowerBandValue3 = na
+
+if master_vwap and not (hideonDWM and timeframe.isdwm)
+    [_vwap, _stdevUpper, _] = ta.vwap(src, isNewPeriod, 1)
+    vwapValue := _vwap
+    stdevAbs = _stdevUpper - _vwap
+    bandBasis = calcModeInput == "Standard Deviation" ? stdevAbs : _vwap * 0.01
+    
+    upperBandValue1 := _vwap + bandBasis * bandMult_1
+    lowerBandValue1 := _vwap - bandBasis * bandMult_1
+    upperBandValue2 := _vwap + bandBasis * bandMult_2
+    lowerBandValue2 := _vwap - bandBasis * bandMult_2
+    upperBandValue3 := _vwap + bandBasis * bandMult_3
+    lowerBandValue3 := _vwap - bandBasis * bandMult_3
+
+plot(vwapValue, title = "VWAP", color = color.new(bandColor, 0), offset = offset)
+
+displayBands = (master_vwap and master_bands) ? display.all : display.none
+
+plot(upperBandValue1, title="Upper Band #1", color = color.new(bandColor, 80), offset = offset, display = displayBands)
+plot(lowerBandValue1, title="Lower Band #1", color = color.new(bandColor, 80), offset = offset, display = displayBands)
+
+plot(upperBandValue2, title="Upper Band #2", color = color.new(bandColor, 70), offset = offset, display = displayBands)
+plot(lowerBandValue2, title="Lower Band #2", color = color.new(bandColor, 70), offset = offset, display = displayBands)
+
+plot(upperBandValue3, title="Upper Band #3", color = color.new(bandColor, 60), offset = offset, display = displayBands)
+plot(lowerBandValue3, title="Lower Band #3", color = color.new(bandColor, 60), offset = offset, display = displayBands)
+
+f_manageSession(SessionState state, bool _enabled, bool _hist, string _name, string _sess, string _tz, color _col, bool _showPoc, bool _showLvn, float[] _dH = na, float[] _dL = na, float[] _dV = na) =>
     bool inS = _enabled and not na(time(timeframe.period, _sess, _tz))
     color borderColor = color.new(_col, 0) 
+    color lvnBgColor   = color.new(_col, 85)
     
-    // --- LOGICA INIZIO SESSIONE ---
+    float targetLvnTop = na
+    float targetLvnBottom = na
+
     if inS and not state.wasInSession
         state.sHigh := high
         state.sLow := low
@@ -32,18 +141,18 @@ f_manageSession(SessionState state, bool _enabled, bool _hist, bool _extEnabled,
         if not _hist
             box.delete(state.sessionBox)
             label.delete(state.sessionLabel)
-            line.delete(state.vLineCustom)
+            line.delete(state.pocLine)
+            box.delete(state.lvnBox)
         
-        state.sessionBox := box.new(bar_index, high, bar_index, low, bgcolor=_col, border_color=borderColor)
+        state.sessionBox   := box.new(bar_index, high, bar_index, low, bgcolor=_col, border_color=_col)
         state.sessionLabel := label.new(bar_index, high, _name, style=label.style_label_down, textcolor=borderColor, color=color.new(color.black, 100), size=size.tiny)
-        state.vLineCustom := na 
+        state.pocLine      := na
+        state.lvnBox       := na
         
-        line.delete(state.extHigh)
-        line.delete(state.extLow)
-        state.extHigh := na
-        state.extLow := na
+        array.clear(state.ltfH)
+        array.clear(state.ltfL)
+        array.clear(state.ltfV)
 
-    // --- LOGICA SESSIONE ATTIVA ---
     if _enabled
         if inS
             state.sHigh := math.max(state.sHigh, high)
@@ -52,77 +161,113 @@ f_manageSession(SessionState state, bool _enabled, bool _hist, bool _extEnabled,
             box.set_rightbottom(state.sessionBox, bar_index, state.sLow)
             box.set_top(state.sessionBox, state.sHigh)
             
-            // CENTRAMENTO LABEL
+            if not na(_dV) and array.size(_dV) > 0
+                for i = 0 to array.size(_dV) - 1
+                    array.push(state.ltfH, array.get(_dH, i))
+                    array.push(state.ltfL, array.get(_dL, i))
+                    array.push(state.ltfV, nz(array.get(_dV, i)))
+            
             int centerIndex = math.round(math.avg(state.startIndex, bar_index))
             label.set_xy(state.sessionLabel, centerIndex, state.sHigh)
 
-            if _vLineHour != -1
-                int currentHour = hour(time, _tz)
-                int currentMin  = minute(time, _tz)
-                if currentHour == _vLineHour and currentMin == _vLineMin and na(state.vLineCustom)
-                    state.vLineCustom := line.new(bar_index, state.sLow, bar_index, state.sHigh, color=borderColor, style=line.style_dashed)
-                if not na(state.vLineCustom)
-                    line.set_y1(state.vLineCustom, state.sLow), line.set_y2(state.vLineCustom, state.sHigh)
+            if (_showPoc or _showLvn) and array.size(state.ltfV) > 0
+                float sessionRange = math.max(syminfo.mintick, state.sHigh - state.sLow)
+                float binSize = sessionRange / bin_res
+                float[] tmpVP = array.new_float(bin_res, 0.0)
+                
+                for j = 0 to array.size(state.ltfV) - 1
+                    vH = array.get(state.ltfH, j)
+                    vL = array.get(state.ltfL, j)
+                    vV = array.get(state.ltfV, j)
+                    vR = math.max(syminfo.mintick, vH - vL)
+                    
+                    for i = 0 to bin_res - 1
+                        bT = state.sHigh - (i * binSize)
+                        bB = bT - binSize
+                        intersect = math.max(0, math.min(vH, bT) - math.max(vL, bB))
+                        if intersect > 0
+                            array.set(tmpVP, i, array.get(tmpVP, i) + (vV * (intersect / vR)))
+                
+                float maxV = array.max(tmpVP)
+                
+                if _showPoc and maxV > 0
+                    int pocIdx = array.indexof(tmpVP, maxV)
+                    float pocPrice = state.sHigh - (pocIdx * binSize) - (binSize / 2)
+                    if na(state.pocLine)
+                        state.pocLine := line.new(state.startIndex, pocPrice, bar_index, pocPrice, color=borderColor, width=2)
+                    else
+                        line.set_xy1(state.pocLine, state.startIndex, pocPrice)
+                        line.set_xy2(state.pocLine, bar_index, pocPrice)
 
-        // --- LOGICA ESTENSIONI (RIGHT INFINITE) ---
-        if _extEnabled and not na(state.sHigh)
-            if na(state.extHigh)
-                state.extHigh := line.new(state.startIndex, state.sHigh, bar_index, state.sHigh, color=borderColor, style=line.style_dashed, extend=extend.right)
-                state.extLow  := line.new(state.startIndex, state.sLow, bar_index, state.sLow, color=borderColor, style=line.style_dashed, extend=extend.right)
-            else
-                line.set_y1(state.extHigh, state.sHigh), line.set_y2(state.extHigh, state.sHigh)
-                line.set_x2(state.extHigh, bar_index)
-                line.set_y1(state.extLow, state.sLow), line.set_y2(state.extLow, state.sLow)
-                line.set_x2(state.extLow, bar_index)
-        else
-            line.delete(state.extHigh), line.delete(state.extLow)
-            state.extHigh := na, state.extLow := na
+                if _showLvn and maxV > 0
+                    float avgV = array.sum(tmpVP) / bin_res
+                    float lvnThreshold = math.min(maxV * 0.25, avgV * 0.60) 
+                    float minV = maxV
+                    int lvnIdx = -1
+                    
+                    for i = 0 to bin_res - 1
+                        float binVal = array.get(tmpVP, i)
+                        if binVal < minV and binVal > 0.0 
+                            minV := binVal
+                            lvnIdx := i
+                    
+                    if lvnIdx != -1 and minV <= lvnThreshold
+                        targetLvnTop    := state.sHigh - (lvnIdx * binSize)
+                        targetLvnBottom := targetLvnTop - binSize
+                        
+                        if na(state.lvnBox)
+                            state.lvnBox := box.new(state.startIndex, targetLvnTop, bar_index, targetLvnBottom, border_color=borderColor, bgcolor=lvnBgColor)
+                        else
+                            box.set_top(state.lvnBox, targetLvnTop)
+                            box.set_bottom(state.lvnBox, targetLvnBottom)
+                            box.set_right(state.lvnBox, bar_index)
+                    else
+                        box.delete(state.lvnBox)
+                        state.lvnBox := na
+
+        if not inS and state.wasInSession
+            if not na(state.pocLine)
+                line.set_x2(state.pocLine, bar_index[1])
+            
+            if _showLvn and not na(state.lvnBox)
+                float finalTop = box.get_top(state.lvnBox)
+                float finalBottom = box.get_bottom(state.lvnBox)
+                box persistentLvn = box.new(state.startIndex, finalTop, bar_index, finalBottom, border_color=borderColor, bgcolor=lvnBgColor)
+                array.push(active_lvns, LVN_Data.new(persistentLvn, finalTop, finalBottom, false, _hist))
+                
+                box.delete(state.lvnBox)
+                state.lvnBox := na
 
     state.wasInSession := inS
 
-// =============================================================================
-// USER INTERFACE (INPUTS)
-// =============================================================================
-gV = "SESSIONS VISIBILITY"
-sL  = input.bool(true, "London", group=gV)
-sLO = input.bool(false, "London (Electronic)", group=gV)
-sN  = input.bool(true, "New York", group=gV)
-sNO = input.bool(false, "New York (Electronic)", group=gV)
-sT  = input.bool(true, "Tokyo", group=gV)
-sSY = input.bool(true, "Sydney", group=gV) // Corretto variabile e label
+var st1 = SessionState.new(na, na, na, na, 0.0, 0.0, 0, false, array.new_float(0), array.new_float(0), array.new_float(0))
+var st2 = SessionState.new(na, na, na, na, 0.0, 0.0, 0, false, array.new_float(0), array.new_float(0), array.new_float(0))
+var st3 = SessionState.new(na, na, na, na, 0.0, 0.0, 0, false, array.new_float(0), array.new_float(0), array.new_float(0))
+var st4 = SessionState.new(na, na, na, na, 0.0, 0.0, 0, false, array.new_float(0), array.new_float(0), array.new_float(0))
+var st5 = SessionState.new(na, na, na, na, 0.0, 0.0, 0, false, array.new_float(0), array.new_float(0), array.new_float(0))
+var st6 = SessionState.new(na, na, na, na, 0.0, 0.0, 0, false, array.new_float(0), array.new_float(0), array.new_float(0))
 
-gL = " LONDON (RTH) ------------------------------------------------"
-t1 = input.session("0800-1630", "", inline="l1", group=gL), z1 = input.string("Europe/London", "", inline="l2", group=gL), c1 = input.color(color.new(#2962FF, 85), "", inline="l2", group=gL), h1 = input.bool(true, "Hist", inline="l2", group=gL), e1 = input.bool(false, "Ext", inline="l2", group=gL)
-
-gLO = "LONDON (Electronic) ---------------------------------------"
-t2 = input.session("2300-0800", "", inline="lo1", group=gLO), z2 = input.string("Europe/London", "", inline="lo2", group=gLO), c2 = input.color(color.new(#4a4a4a, 90), "", inline="lo2", group=gLO), h2 = input.bool(false, "Hist", inline="lo2", group=gLO), e2 = input.bool(true, "Ext", inline="lo2", group=gLO)
-
-gN = " NEW YORK (RTH) ----------------------------------------------"
-t3 = input.session("0930-1600", "", inline="n1", group=gN), z3 = input.string("America/New_York", "", inline="n2", group=gN), c3 = input.color(color.new(#f23645, 85), "", inline="n2", group=gN), h3 = input.bool(true, "Hist", inline="n2", group=gN), e3 = input.bool(false, "Ext", inline="n2", group=gN)
-
-gNO = "New York (Electronic) -------------------------------------"
-t4 = input.session("1600-0930", "", inline="no1", group=gNO), z4 = input.string("America/New_York", "", inline="no2", group=gNO), c4 = input.color(color.new(#4a4a4a, 90), "", inline="no2", group=gNO), h4 = input.bool(false, "Hist", inline="no2", group=gNO), e4 = input.bool(true, "Ext", inline="no2", group=gNO)
-
-gT = " TOKYO (RTH) --------------------------------------------------"
-t5 = input.session("0900-1530", "", inline="t1", group=gT), z5 = input.string("Asia/Tokyo", "", inline="t2", group=gT), c5 = input.color(color.new(#FF9800, 85), "", inline="t2", group=gT), h5 = input.bool(true, "Hist", inline="t2", group=gT), e5 = input.bool(false, "Ext", inline="t2", group=gT)
-
-gSY = "SYDNEY (RTH) -------------------------------------------------"
-t6 = input.session("1000-1600", "", inline="sy1", group=gSY), z6 = input.string("Australia/Sydney", "", inline="sy2", group=gSY), c6 = input.color(color.new(#00BCD4, 90), "", inline="sy2", group=gSY), h6 = input.bool(true, "Hist", inline="sy2", group=gSY), e6 = input.bool(false, "Ext", inline="sy2", group=gSY)
-
-// =============================================================================
-// STATE INITIALIZATION & EXECUTION
-// =============================================================================
-var st1 = SessionState.new(na, na, na, na, na, 0.0, 0.0, 0, false)
-var st2 = SessionState.new(na, na, na, na, na, 0.0, 0.0, 0, false)
-var st3 = SessionState.new(na, na, na, na, na, 0.0, 0.0, 0, false)
-var st4 = SessionState.new(na, na, na, na, na, 0.0, 0.0, 0, false)
-var st5 = SessionState.new(na, na, na, na, na, 0.0, 0.0, 0, false)
-var st6 = SessionState.new(na, na, na, na, na, 0.0, 0.0, 0, false)
+ltf_res = timeframe.isintraday ? (timeframe.multiplier <= 15 ? "1" : "5") : (timeframe.isdaily ? "15" : "60")
+[dH, dL, dV] = request.security_lower_tf(syminfo.tickerid, ltf_res, [high, low, volume])
 
 if not timeframe.isdwm
-    f_manageSession(st1, sL, h1, e1, "LONDON", t1, z1, c1, 11, 0) 
-    f_manageSession(st2, sLO, h2, e2, "LON (ETH)", t2, z2, c2)
-    f_manageSession(st3, sN, h3, e3, "NEW YORK", t3, z3, c3, 12, 30) 
-    f_manageSession(st4, sNO, h4, e4, "NY (ETH)", t4, z4, c4)
-    f_manageSession(st5, sT, h5, e5, "TOKYO", t5, z5, c5)
-    f_manageSession(st6, sSY, h6, e6, "SYDNEY", t6, z6, c6)
+    f_manageSession(st1, sL, h1, "LDN", t1, z1, c1, master_poc, master_lvn, dH, dL, dV) 
+    f_manageSession(st2, sLO, h2, "LDN ETH", t2, z2, c2, master_poc, master_lvn, dH, dL, dV)
+    f_manageSession(st3, sN, h3, "NYC", t3, z3, c3, master_poc, master_lvn, dH, dL, dV) 
+    f_manageSession(st4, sNO, h4, "NYC ETH", t4, z4, c4, master_poc, master_lvn, dH, dL, dV)
+    f_manageSession(st5, sT, h5, "TYO", t5, z5, c5, master_poc, master_lvn, dH, dL, dV)
+    f_manageSession(st6, sSY, h6, "SYD", t6, z6, c6, master_poc, master_lvn, dH, dL, dV)
+
+if array.size(active_lvns) > 0
+    for i = array.size(active_lvns) - 1 to 0
+        LVN_Data lvn = array.get(active_lvns, i)
+        bool coreMitigation = (high >= lvn.bottom) and (low <= lvn.top)
+        
+        if coreMitigation
+            if not lvn.sessionHist
+                box.delete(lvn.id)
+            else
+                box.set_right(lvn.id, bar_index)
+            array.remove(active_lvns, i)
+        else
+            box.set_right(lvn.id, bar_index)
