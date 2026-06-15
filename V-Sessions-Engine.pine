@@ -37,7 +37,7 @@ master_lvn   = input.bool(true, "LVN", inline="master", group="GLOBAL CONFIGURAT
 master_vwap  = input.bool(true, "VWAP", inline="master", group="GLOBAL CONFIGURATIONS")
 master_bands = input.bool(true, "BANDS", inline="master", group="GLOBAL CONFIGURATIONS")
 
-bin_res     = 24    /// Profile Row Resolution (Bins)
+bin_res     = 24    
 
 c1   = input.color(color.new(#2962FF, 85), "LDN ☀", inline="s1_row2", group="TRADING SESSIONS SETTINGS")
 t1   = input.session("0800-1630", "", inline="s1_row2", group="TRADING SESSIONS SETTINGS")
@@ -63,23 +63,20 @@ c6   = input.color(color.new(#00BCD4, 90), "SYD ☀", inline="s6_row2", group="T
 t6   = input.session("1000-1600", "", inline="s6_row2", group="TRADING SESSIONS SETTINGS")
 h6   = input.bool(false, "Hist", inline="s6_row2", group="TRADING SESSIONS SETTINGS")
 
-z1 = "Europe/London"
-z2 = "Europe/London"
-z3 = "America/New_York"
-z4 = "America/New_York"
-z5 = "Asia/Tokyo"
-z6 = "Australia/Sydney"
+z1 = "Europe/London", z2 = "Europe/London", z3 = "America/New_York"
+z4 = "America/New_York", z5 = "Asia/Tokyo", z6 = "Australia/Sydney"
 
-hideonDWM = input.bool(false, title="Hide VWAP on 1D or Above", group="VWAP CONFIGURATIONS")
-anchor = input.string(defval = "Session", title="Anchor Period", options=["Session", "Week", "Month", "Quarter", "Year", "Decade", "Century"], group="VWAP CONFIGURATIONS")
-src = input.source(title = "Source", defval = hlc3, group="VWAP CONFIGURATIONS")
-offset = input.int(0, title="Offset", group="VWAP CONFIGURATIONS")
-calcModeInput = input.string("Standard Deviation", "Bands Calculation Mode", options = ["Standard Deviation", "Percentage"], group = "VWAP CONFIGURATIONS")
-
-bandColor   = input.color(color.new(#1a1e28, 0), "Bands Base Color", group="VWAP CONFIGURATIONS")
-bandMult_1 = input.float(1.0, title = "Multiplier Band #1", group = "VWAP CONFIGURATIONS", step = 0.5, minval=0)
-bandMult_2 = input.float(2.0, title = "Multiplier Band #2", group = "VWAP CONFIGURATIONS", step = 0.5, minval=0)
-bandMult_3 = input.float(3.0, title = "Multiplier Band #3", group = "VWAP CONFIGURATIONS", step = 0.5, minval=0)
+// ------------------------------------------------------------------
+hideonDWM     = false
+anchor        = "Session"
+src           = hlc3
+offset        = 0
+calcModeInput = "Standard Deviation"
+bandColor     = color.new(#1a1e28, 0)
+bandMult_1    = 1.0
+bandMult_2    = 2.0
+bandMult_3    = 3.0
+// -----------------------------------------------------------------
 
 isNewPeriod = switch anchor
     "Session"   => timeframe.change("D")
@@ -118,14 +115,14 @@ displayBands = (master_vwap and master_bands) ? display.all : display.none
 
 plot(upperBandValue1, title="Upper Band #1", color = color.new(bandColor, 80), offset = offset, display = displayBands)
 plot(lowerBandValue1, title="Lower Band #1", color = color.new(bandColor, 80), offset = offset, display = displayBands)
-
 plot(upperBandValue2, title="Upper Band #2", color = color.new(bandColor, 70), offset = offset, display = displayBands)
 plot(lowerBandValue2, title="Lower Band #2", color = color.new(bandColor, 70), offset = offset, display = displayBands)
-
 plot(upperBandValue3, title="Upper Band #3", color = color.new(bandColor, 60), offset = offset, display = displayBands)
 plot(lowerBandValue3, title="Lower Band #3", color = color.new(bandColor, 60), offset = offset, display = displayBands)
 
-f_manageSession(SessionState state, bool _enabled, bool _hist, string _name, string _sess, string _tz, color _col, bool _showPoc, bool _showLvn, float[] _dH = na, float[] _dL = na, float[] _dV = na) =>
+var float[] tmpVP = array.new_float(24, 0.0)
+
+f_manageSession(SessionState state, bool _enabled, bool _hist, string _name, string _sess, string _tz, color _col, bool _showPoc, bool _showLvn, float[] _dH, float[] _dL, float[] _dV) =>
     bool inS = _enabled and not na(time(timeframe.period, _sess, _tz))
     color borderColor = color.new(_col, 0) 
     color lvnBgColor   = color.new(_col, 85)
@@ -161,8 +158,9 @@ f_manageSession(SessionState state, bool _enabled, bool _hist, string _name, str
             box.set_rightbottom(state.sessionBox, bar_index, state.sLow)
             box.set_top(state.sessionBox, state.sHigh)
             
-            if not na(_dV) and array.size(_dV) > 0
-                for i = 0 to array.size(_dV) - 1
+            int dSize = array.size(_dV)
+            if dSize > 0
+                for i = 0 to dSize - 1
                     array.push(state.ltfH, array.get(_dH, i))
                     array.push(state.ltfL, array.get(_dL, i))
                     array.push(state.ltfV, nz(array.get(_dV, i)))
@@ -170,21 +168,22 @@ f_manageSession(SessionState state, bool _enabled, bool _hist, string _name, str
             int centerIndex = math.round(math.avg(state.startIndex, bar_index))
             label.set_xy(state.sessionLabel, centerIndex, state.sHigh)
 
-            if (_showPoc or _showLvn) and array.size(state.ltfV) > 0
+            int ltfSize = array.size(state.ltfV)
+            if (_showPoc or _showLvn) and ltfSize > 0
                 float sessionRange = math.max(syminfo.mintick, state.sHigh - state.sLow)
                 float binSize = sessionRange / bin_res
-                float[] tmpVP = array.new_float(bin_res, 0.0)
+                array.fill(tmpVP, 0.0)
                 
-                for j = 0 to array.size(state.ltfV) - 1
-                    vH = array.get(state.ltfH, j)
-                    vL = array.get(state.ltfL, j)
-                    vV = array.get(state.ltfV, j)
-                    vR = math.max(syminfo.mintick, vH - vL)
+                for j = 0 to ltfSize - 1
+                    float vH = array.get(state.ltfH, j)
+                    float vL = array.get(state.ltfL, j)
+                    float vV = array.get(state.ltfV, j)
+                    float vR = math.max(syminfo.mintick, vH - vL)
                     
                     for i = 0 to bin_res - 1
-                        bT = state.sHigh - (i * binSize)
-                        bB = bT - binSize
-                        intersect = math.max(0, math.min(vH, bT) - math.max(vL, bB))
+                        float bT = state.sHigh - (i * binSize)
+                        float bB = bT - binSize
+                        float intersect = math.max(0.0, math.min(vH, bT) - math.max(vL, bB))
                         if intersect > 0
                             array.set(tmpVP, i, array.get(tmpVP, i) + (vV * (intersect / vR)))
                 
@@ -258,8 +257,9 @@ if not timeframe.isdwm
     f_manageSession(st5, sT, h5, "TYO", t5, z5, c5, master_poc, master_lvn, dH, dL, dV)
     f_manageSession(st6, sSY, h6, "SYD", t6, z6, c6, master_poc, master_lvn, dH, dL, dV)
 
-if array.size(active_lvns) > 0
-    for i = array.size(active_lvns) - 1 to 0
+int activeSize = array.size(active_lvns)
+if activeSize > 0
+    for i = activeSize - 1 to 0
         LVN_Data lvn = array.get(active_lvns, i)
         bool coreMitigation = (high >= lvn.bottom) and (low <= lvn.top)
         
