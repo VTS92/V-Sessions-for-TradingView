@@ -1,4 +1,4 @@
-// © 2026 Vito Santarsiero | https://www.linkedin.com/in/vito-santarsiero
+// 2026 © Vito Santarsiero
 //@version=6
 indicator('V-Sessions', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
 
@@ -25,42 +25,42 @@ type LVN_Data
 
 master_hist = input.bool(false, 'Historical Data (All Sessions)', group = 'SESSION CONFIGURATION', tooltip = 'Disabling this hides past sessions and POCs, leaving only unmitigated LVNs and the active session visible')
 
-sL = input.bool(true, '', inline = 's1_row', group = 'SESSION CONFIGURATION')
+sL = input.bool(true, '', inline = 's1_row', group = 'SESSION CONFIGURATION', tooltip = 'London Session\n- Timezone: Europe/London (GMT/BST)\n- Default Hours: 08:00 - 17:00\n- Primary Markets: European Forex, Equities, & Commodities.')
 lbl1 = input.string('🇬🇧 London', '', inline = 's1_row', group = 'SESSION CONFIGURATION', display = display.none)
 c1 = input.color(color.new(#5b9cf6, 85), '', inline = 's1_row', group = 'SESSION CONFIGURATION')
 t1 = input.session('0800-1700', '', inline = 's1_row', group = 'SESSION CONFIGURATION')
 
-sN = input.bool(true, '', inline = 's2_row', group = 'SESSION CONFIGURATION')
+sN = input.bool(true, '', inline = 's2_row', group = 'SESSION CONFIGURATION', tooltip = 'New York Session (Full)\n- Timezone: America/New_York (EST/EDT)\n- Default Hours: 08:00 - 17:00\n- Primary Markets: US Forex, Futures, & Equities.')
 lbl2 = input.string('🇺🇸 New York', '', inline = 's2_row', group = 'SESSION CONFIGURATION', display = display.none)
 c2 = input.color(color.new(#f7525f, 85), '', inline = 's2_row', group = 'SESSION CONFIGURATION')
 t2 = input.session('0800-1700', '', inline = 's2_row', group = 'SESSION CONFIGURATION')
 
-sNYSE = input.bool(false, '', inline = 's3_row', group = 'SESSION CONFIGURATION')
+sNYSE = input.bool(false, '', inline = 's3_row', group = 'SESSION CONFIGURATION', tooltip = 'NYSE Regular Trading Hours (RTH)\n- Timezone: America/New_York (EST/EDT)\n- Default Hours: 09:30 - 16:00\n- Primary Markets: US Cash Equities & Index Futures Peak Volume.')
 lbl3 = input.string('🇺🇸 NYSE', '', inline = 's3_row', group = 'SESSION CONFIGURATION', display = display.none)
 c3 = input.color(color.new(#f7525f, 85), '', inline = 's3_row', group = 'SESSION CONFIGURATION')
 t3 = input.session('0930-1600', '', inline = 's3_row', group = 'SESSION CONFIGURATION')
 
-sNO = input.bool(true, '', inline = 's4_row', group = 'SESSION CONFIGURATION')
+sNO = input.bool(true, '', inline = 's4_row', group = 'SESSION CONFIGURATION', tooltip = 'New York Extended Trading Hours (ETH / Overnight)\n- Timezone: America/New_York (EST/EDT)\n- Default Hours: 16:00 - 09:30\n- Primary Markets: Globex Futures & After-Hours Trading.')
 lbl4 = input.string('🇺🇸 NY (eth)', '', inline = 's4_row', group = 'SESSION CONFIGURATION', display = display.none)
 c4 = input.color(color.new(#808080, 85), '', inline = 's4_row', group = 'SESSION CONFIGURATION')
 t4 = input.session('1600-0930', '', inline = 's4_row', group = 'SESSION CONFIGURATION')
 
-sT = input.bool(true, '', inline = 's5_row', group = 'SESSION CONFIGURATION')
+sT = input.bool(true, '', inline = 's5_row', group = 'SESSION CONFIGURATION', tooltip = 'Tokyo Session\n- Timezone: Asia/Tokyo (JST)\n- Default Hours: 09:00 - 18:00\n- Primary Markets: Asian Forex Pairs (JPY) & Asian Indices.')
 lbl5 = input.string('🇯🇵 Tokyo', '', inline = 's5_row', group = 'SESSION CONFIGURATION', display = display.none)
 c5 = input.color(color.new(#FF9800, 85), '', inline = 's5_row', group = 'SESSION CONFIGURATION')
 t5 = input.session('0900-1800', '', inline = 's5_row', group = 'SESSION CONFIGURATION')
 
-sTSE = input.bool(false, '', inline = 's6_row', group = 'SESSION CONFIGURATION')
+sTSE = input.bool(false, '', inline = 's6_row', group = 'SESSION CONFIGURATION', tooltip = 'Tokyo Stock Exchange (TSE) RTH\n- Timezone: Asia/Tokyo (JST)\n- Default Hours: 09:00 - 15:00\n- Primary Markets: Japanese Cash Equities (Nikkei 225).')
 lbl6 = input.string('🇯🇵 TSE', '', inline = 's6_row', group = 'SESSION CONFIGURATION', display = display.none)
 c6 = input.color(color.new(#ff9800, 85), '', inline = 's6_row', group = 'SESSION CONFIGURATION')
 t6 = input.session('0900-1500', '', inline = 's6_row', group = 'SESSION CONFIGURATION')
 
-sSY = input.bool(true, '', inline = 's7_row', group = 'SESSION CONFIGURATION')
+sSY = input.bool(true, '', inline = 's7_row', group = 'SESSION CONFIGURATION', tooltip = 'Sydney Session\n- Timezone: Australia/Sydney (AEST/AEDT)\n- Default Hours: 07:00 - 16:00\n- Primary Markets: AUD, NZD Pairs & Pacific Region Opening.')
 lbl7 = input.string('🇦🇺 Sydney', '', inline = 's7_row', group = 'SESSION CONFIGURATION', display = display.none)
 c7 = input.color(color.new(#00BCD4, 85), '', inline = 's7_row', group = 'SESSION CONFIGURATION')
 t7 = input.session('0700-1600', '', inline = 's7_row', group = 'SESSION CONFIGURATION')
 
-s8 = input.bool(false, '', inline = 's8_row', group = 'SESSION CONFIGURATION')
+s8 = input.bool(false, '', inline = 's8_row', group = 'SESSION CONFIGURATION', tooltip = 'Custom User Session\n- Timezone: Configurable via dropdown (Default: UTC+1)\n- Default Hours: 17:00 - 08:00\n- Primary Use: Custom Asian/European transition or custom hours.')
 z8 = input.string('UTC+1', '', options = ['UTC', 'UTC+0', 'UTC+1', 'UTC+2', 'UTC+3', 'UTC+4', 'UTC+5', 'UTC+6', 'UTC+7', 'UTC+8', 'UTC+9', 'UTC+10', 'UTC+11', 'UTC+12', 'UTC-1', 'UTC-2', 'UTC-3', 'UTC-4', 'UTC-5', 'UTC-6', 'UTC-7', 'UTC-8', 'UTC-9', 'UTC-10', 'UTC-11', 'UTC-12', 'GMT', 'GMT+1', 'GMT+2', 'GMT+3', 'GMT+4', 'GMT+5', 'GMT+6', 'GMT+7', 'GMT+8', 'GMT+9', 'GMT+10', 'GMT+11', 'GMT+12', 'GMT-1', 'GMT-2', 'GMT-3', 'GMT-4', 'GMT-5', 'GMT-6', 'GMT-7', 'GMT-8', 'GMT-9', 'GMT-10', 'GMT-11', 'GMT-12'], inline = 's8_row', group = 'SESSION CONFIGURATION')
 c8 = input.color(color.new(#808080, 85), '', inline = 's8_row', group = 'SESSION CONFIGURATION')
 t8 = input.session('1700-0800', '', inline = 's8_row', group = 'SESSION CONFIGURATION')
@@ -73,7 +73,7 @@ master_vwap = input.bool(false, 'VWAP', inline = 'master', group = 'SESSION TOOL
 master_bands = input.bool(false, 'BANDS', inline = 'master', group = 'SESSION TOOLS & CONFIGURATIONS')
 showDayLabel = input.bool(true, 'DAYS', inline = 'master', group = 'SESSION TOOLS & CONFIGURATIONS')
 
-color dayDividerCol = color.new(#808080, 30)
+color dayLabelColor = color.new(#808080, 30)
 
 z1 = 'Europe/London'
 z2 = 'America/New_York'
@@ -164,12 +164,10 @@ f_getSessionEndTime(string _sess, string _tz) =>
     endTimestamp
 
 if isNewPeriod and timeframe.isintraday
-    line.new(x1 = time, y1 = low, x2 = time, y2 = high, xloc = xloc.bar_time, extend = extend.both, color = dayDividerCol, style = line.style_dashed, width = 1)
-
     if showDayLabel
         int currentDayNum = dayofweek(time, syminfo.timezone)
         string dayStr = f_getDayString(currentDayNum)
-        label.new(x = time, y = na, text = dayStr, xloc = xloc.bar_time, yloc = yloc.abovebar, color = color.new(color.black, 100), textcolor = dayDividerCol, style = label.style_none, size = size.small)
+        label.new(x = time, y = na, text = dayStr, xloc = xloc.bar_time, yloc = yloc.abovebar, color = color.new(color.black, 100), textcolor = dayLabelColor, style = label.style_none, size = size.small)
 
 if na(src[1])
     isNewPeriod := true
