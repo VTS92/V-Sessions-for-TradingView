@@ -25,8 +25,8 @@ Because every session is tracked as an independent state, the indicator can disp
 ---
 
 ## Screenshots
-![V-Sessions Detail](Screenshot_1.png)
-![V-Sessions Overview](Screenshot_2.png) 
+![V-Sessions Detail](Screenshot1.png)
+![V-Sessions Overview](Screenshot2.png) 
 
 ---
 
